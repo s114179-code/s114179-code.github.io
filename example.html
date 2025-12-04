@@ -6,7 +6,200 @@
     <link rel="icon" href="5bbe86970d244a4fbe3713c16f8c6e6c.jpeg">
   </head>
   <body>
- Are you looking at my website?  
+ #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+daily_horoscope.py
+每日運勢（中文） — 基於姓名/星座和當天日期生成穩定的「每日」運勢
+用法:
+    python daily_horoscope.py --name "小明"
+    python daily_horoscope.py --birthday 1990-05-20
+    python daily_horoscope.py --sign "天秤座" --name "小美"
+"""
+
+import argparse
+import datetime
+import hashlib
+import random
+import sys
+
+# 西洋星座範圍（含開始日）
+ZODIAC_RANGES = [
+    ("摩羯座", (12, 22)), ("水瓶座", (1, 20)), ("雙魚座", (2, 19)), ("牡羊座", (3, 21)),
+    ("金牛座", (4, 20)), ("雙子座", (5, 21)), ("巨蟹座", (6, 22)), ("獅子座", (7, 23)),
+    ("處女座", (8, 23)), ("天秤座", (9, 23)), ("天蠍座", (10, 24)), ("射手座", (11, 23)),
+    ("摩羯座", (12, 22))  # 12/22 開始摩羯，方便處理年尾區段
+]
+
+# 運勢語句庫（示範、可自行擴充）
+TEMPLATES = {
+    "overall": [
+        "今天的你狀態穩定，適合處理細節工作。",
+        "可能會遇到小插曲，但不影響大局，維持好心態最重要。",
+        "今天適合冒險嘗試新事物，直覺會帶你走向正確方向。",
+        "能量較弱，建議早睡並保留體力給重要任務。",
+        "人際互動活躍，可多表現真誠，會有不錯回應。"
+    ],
+    "love": [
+        "感情上溫柔以待，能拉近彼此距離。",
+        "單身者有機會遇到有趣的人，保持自然就好。",
+        "溝通容易誤會，說話前多想一想對方的立場。",
+        "適合安排約會或共同活動，加深情感連結。",
+        "給彼此空間會讓關係更健康。"
+    ],
+    "career": [
+        "工作上有出色表現的機會，別害怕展現自己。",
+        "專注於手邊任務，避免同時開太多專案。",
+        "可能需要跟同事多協調，保持耐心會有好結果。",
+        "適合做長期規劃，今天想法會比較成熟實在。",
+        "遇到瓶頸時，短暫休息能帶來新視角。"
+    ],
+    "money": [
+        "財務狀況穩定，適合小額投資或檢查帳目。",
+        "避免衝動購物，先列清單再決定。",
+        "有意外小收穫，但別過度樂觀計畫支出。",
+        "今天適合談論合約或金錢相關細節。",
+        "把握省錢的小方法，長期會有成效。"
+    ],
+    "health": [
+        "精神與體力中等，注意飲食與水分補充。",
+        "適合做些伸展或短暫運動，改善循環。",
+        "注意睡眠品質，下午避免過度咖啡因。",
+        "情緒波動時，深呼吸幾分鐘會有幫助。",
+        "小病小痛要及時休息，別拖延就醫。"
+    ],
+    "advice": [
+        "今天別怕向他人請教，對方可能願意幫忙。",
+        "整理資訊後再做決定，你會更有把握。",
+        "寫下三件要完成的小事，逐一清除它們。",
+        "保持謙虛但果斷，別讓猶豫拖延你。",
+        "善用直覺，但也備一個備案。"
+    ],
+    "colors": [
+        "藍色", "綠色", "紫色", "黃色", "紅色", "白色", "灰色", "橙色", "粉色", "咖啡色"
+    ]
+}
+
+def parse_args():
+    p = argparse.ArgumentParser(description="每日運勢產生器（中文）")
+    p.add_argument("--name", "-n", type=str, default="朋友", help="你的名字（用於種子）")
+    p.add_argument("--birthday", "-b", type=str, help="生日，格式 YYYY-MM-DD（用於推算星座）")
+    p.add_argument("--sign", "-s", type=str, help="直接指定星座（例如 '天秤座'）")
+    p.add_argument("--date", "-d", type=str, help="指定日期 (YYYY-MM-DD)，預設為今天")
+    return p.parse_args()
+
+def zodiac_from_month_day(month: int, day: int) -> str:
+    # 使用 ZODIAC_RANGES 判斷星座（簡單方式）
+    # 檢查從每個宣告日開始到下一個宣告日前一天屬於該星座
+    # 作法：用每個範圍開始日，從該日向後直到下一個開始日（簡化處理）
+    # 直接用常見邊界判定：
+    if (month == 3 and day >= 21) or (month == 4 and day <= 19):
+        return "牡羊座"
+    if (month == 4 and day >= 20) or (month == 5 and day <= 20):
+        return "金牛座"
+    if (month == 5 and day >= 21) or (month == 6 and day <= 21):
+        return "雙子座"
+    if (month == 6 and day >= 22) or (month == 7 and day <= 22):
+        return "巨蟹座"
+    if (month == 7 and day >= 23) or (month == 8 and day <= 22):
+        return "獅子座"
+    if (month == 8 and day >= 23) or (month == 9 and day <= 22):
+        return "處女座"
+    if (month == 9 and day >= 23) or (month == 10 and day <= 23):
+        return "天秤座"
+    if (month == 10 and day >= 24) or (month == 11 and day <= 22):
+        return "天蠍座"
+    if (month == 11 and day >= 23) or (month == 12 and day <= 21):
+        return "射手座"
+    if (month == 12 and day >= 22) or (month == 1 and day <= 19):
+        return "摩羯座"
+    if (month == 1 and day >= 20) or (month == 2 and day <= 18):
+        return "水瓶座"
+    if (month == 2 and day >= 19) or (month == 3 and day <= 20):
+        return "雙魚座"
+    return "未知星座"
+
+def stable_random_for(date_str: str, name: str):
+    """
+    建立一個 deterministic 的 random.Random 根據日期+姓名
+    這樣同一天同名會回傳相同運勢。
+    """
+    key = f"{date_str}|{name}"
+    h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    seed = int(h[:16], 16)  # 取前16位 hex 當 seed
+    return random.Random(seed)
+
+def pick_for_sign(rng: random.Random):
+    """從每個維度的模板隨機挑一條"""
+    today = {}
+    today["overall"] = rng.choice(TEMPLATES["overall"])
+    today["love"] = rng.choice(TEMPLATES["love"])
+    today["career"] = rng.choice(TEMPLATES["career"])
+    today["money"] = rng.choice(TEMPLATES["money"])
+    today["health"] = rng.choice(TEMPLATES["health"])
+    today["advice"] = rng.choice(TEMPLATES["advice"])
+    today["lucky_number"] = rng.randint(1, 99)
+    today["lucky_color"] = rng.choice(TEMPLATES["colors"])
+    return today
+
+def format_output(name: str, sign: str, date_str: str, data: dict) -> str:
+    out = []
+    out.append(f"=== 每日運勢 — {date_str} ===")
+    out.append(f"姓名/暱稱：{name}")
+    out.append(f"星座：{sign}")
+    out.append("")
+    out.append(f"整體運勢：{data['overall']}")
+    out.append(f"愛情運勢：{data['love']}")
+    out.append(f"事業運勢：{data['career']}")
+    out.append(f"金錢運勢：{data['money']}")
+    out.append(f"健康提醒：{data['health']}")
+    out.append(f"小建議：{data['advice']}")
+    out.append(f"幸運數字：{data['lucky_number']}")
+    out.append(f"幸運顏色：{data['lucky_color']}")
+    out.append("==============================")
+    return "\n".join(out)
+
+def main():
+    args = parse_args()
+
+    # 決定日期
+    if args.date:
+        try:
+            date_obj = datetime.datetime.strptime(args.date, "%Y-%m-%d").date()
+        except ValueError:
+            print("日期格式錯誤，請使用 YYYY-MM-DD。", file=sys.stderr)
+            sys.exit(1)
+    else:
+        date_obj = datetime.date.today()
+
+    date_str = date_obj.isoformat()
+
+    # 決定星座
+    sign = None
+    if args.sign:
+        sign = args.sign.strip()
+    elif args.birthday:
+        try:
+            bd = datetime.datetime.strptime(args.birthday, "%Y-%m-%d").date()
+            sign = zodiac_from_month_day(bd.month, bd.day)
+        except ValueError:
+            print("生日格式錯誤，請使用 YYYY-MM-DD。", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # 若都沒提供，預設星座為未知
+        sign = "未知"
+
+    name = args.name.strip()
+
+    rng = stable_random_for(date_str, name + "|" + sign)
+    data = pick_for_sign(rng)
+
+    result = format_output(name, sign, date_str, data)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+
   </body>
 </html>
   
