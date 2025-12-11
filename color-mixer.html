@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>顏色混和器 Color Mixer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans CJK TC", "PingFang TC", "Helvetica Neue", Arial; padding:20px; max-width:800px; margin:0 auto; }
+    .row { display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    label { min-width:80px; }
+    .swatch { width:120px; height:80px; border-radius:6px; border:1px solid #ccc; }
+    .result { display:flex; gap:12px; align-items:center; margin-top:18px; }
+    .code { font-family: monospace; background:#f7f7f7; padding:6px 10px; border-radius:6px; border:1px solid #e5e5e5; }
+    select, input[type="range"] { vertical-align:middle; }
+  </style>
+</head>
+<body>
+  <h1>顏色混和器 (Color Mixer)</h1>
+
+  <div class="row">
+    <div>
+      <label for="c1">顏色 A</label><br/>
+      <input id="c1" type="color" value="#ff0000">
+    </div>
+    <div>
+      <label for="a1">不透明度 A</label><br/>
+      <input id="a1" type="range" min="0" max="1" step="0.01" value="1">
+      <div class="code" id="a1val">1.00</div>
+    </div>
+    <div>
+      <div class="swatch" id="swatchA"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="c2">顏色 B</label><br/>
+      <input id="c2" type="color" value="#0000ff">
+    </div>
+    <div>
+      <label for="a2">不透明度 B</label><br/>
+      <input id="a2" type="range" min="0" max="1" step="0.01" value="1">
+      <div class="code" id="a2val">1.00</div>
+    </div>
+    <div>
+      <div class="swatch" id="swatchB"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <label for="mode">混和方式</label>
+    <select id="mode">
+      <option value="average">平均 (simple average)</option>
+      <option value="over" selected>Alpha 合成 (A over B)</option>
+    </select>
+    <button id="swap">交換 A ⇄ B</button>
+  </div>
+
+  <div class="result">
+    <div>
+      <div class="swatch" id="swatchResult"></div>
+    </div>
+    <div>
+      <div><strong>結果 HEX：</strong><span class="code" id="hexOut">#000000</span></div>
+      <div><strong>結果 RGBA：</strong><span class="code" id="rgbaOut">rgba(0,0,0,1)</span></div>
+      <div style="margin-top:8px;"><small>說明：平均 = 對 RGB 分量取加權平均（考慮 alpha）；Alpha 合成 = 使用標準「over」公式 (C = Ca*αa + Cb*(1-αa))</small></div>
+    </div>
+  </div>
+
+<script>
+  // helpers
+  function hexToRgb(hex) {
+    hex = hex.replace('#','');
+    if (hex.length === 3) hex = hex.split('').map(h => h+h).join('');
+    const r = parseInt(hex.substr(0,2),16);
+    const g = parseInt(hex.substr(2,2),16);
+    const b = parseInt(hex.substr(4,2),16);
+    return [r,g,b];
+  }
+  function rgbToHex(r,g,b) {
+    const to2 = n => ('0' + Math.round(n).toString(16)).slice(-2);
+    return '#' + to2(r) + to2(g) + to2(b);
+  }
+
+  // two mixing functions
+  function mixAverage(rgbA, aA, rgbB, aB) {
+    // weighted average by alpha then normalize by total alpha (so semi-transparent behaves sensibly)
+    const wA = aA;
+    const wB = aB;
+    const total = wA + wB || 1;
+    const r = (rgbA[0]*wA + rgbB[0]*wB) / total;
+    const g = (rgbA[1]*wA + rgbB[1]*wB) / total;
+    const b = (rgbA[2]*wA + rgbB[2]*wB) / total;
+    // resulting alpha approximate: combined opacity
+    const outA = aA + aB*(1-aA);
+    return {rgb:[r,g,b], a:outA};
+  }
+
+  function mixOver(rgbA, aA, rgbB, aB) {
+    // A over B: out = Ca*αa + Cb*αb*(1-αa)  but usually normalized by outAlpha
+    const outA = aA + aB*(1 - aA);
+    const r = (rgbA[0]*aA + rgbB[0]*aB*(1 - aA)) / (outA || 1);
+    const g = (rgbA[1]*aA + rgbB[1]*aB*(1 - aA)) / (outA || 1);
+    const b = (rgbA[2]*aA + rgbB[2]*aB*(1 - aA)) / (outA || 1);
+    return {rgb:[r,g,b], a:outA};
+  }
+
+  // DOM
+  const c1 = document.getElementById('c1');
+  const c2 = document.getElementById('c2');
+  const a1 = document.getElementById('a1');
+  const a2 = document.getElementById('a2');
+  const a1val = document.getElementById('a1val');
+  const a2val = document.getElementById('a2val');
+  const swatchA = document.getElementById('swatchA');
+  const swatchB = document.getElementById('swatchB');
+  const swatchResult = document.getElementById('swatchResult');
+  const hexOut = document.getElementById('hexOut');
+  const rgbaOut = document.getElementById('rgbaOut');
+  const mode = document.getElementById('mode');
+  const swapBtn = document.getElementById('swap');
+
+  function updateSwatches() {
+    swatchA.style.background = c1.value;
+    swatchB.style.background = c2.value;
+    a1val.textContent = Number(a1.value).toFixed(2);
+    a2val.textContent = Number(a2.value).toFixed(2);
+
+    const rgbA = hexToRgb(c1.value);
+    const rgbB = hexToRgb(c2.value);
+    const aAval = parseFloat(a1.value);
+    const aBval = parseFloat(a2.value);
+
+    let out;
+    if (mode.value === 'average') {
+      out = mixAverage(rgbA, aAval, rgbB, aBval);
+    } else {
+      out = mixOver(rgbA, aAval, rgbB, aBval);
+    }
+    const [r,g,b] = out.rgb;
+    const aOut = out.a;
+
+    const hex = rgbToHex(r,g,b);
+    swatchResult.style.background = `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${aOut.toFixed(3)})`;
+    // display RGBA and HEX
+    hexOut.textContent = hex;
+    rgbaOut.textContent = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${aOut.toFixed(3)})`;
+  }
+
+  // events
+  [c1,c2,a1,a2,mode].forEach(el => el.addEventListener('input', updateSwatches));
+  swapBtn.addEventListener('click', () => {
+    const tmpC = c1.value;
+    const tmpA = a1.value;
+    c1.value = c2.value;
+    a1.value = a2.value;
+    c2.value = tmpC;
+    a2.value = tmpA;
+    updateSwatches();
+  });
+
+  // initial
+  updateSwatches();
+</script>
+</body>
+</html>
