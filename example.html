@@ -4,9 +4,46 @@
     <meta charset="utf-8">
     <title>宜蕙的網站</title>
     <link rel="icon" href="5bbe86970d244a4fbe3713c16f8c6e6c.jpeg">
-  </head>
-  <body>
-
-  </body>
-</html>
   
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    .box {
+      width: 200px;
+      height: 200px;
+      border-radius: 12px;
+      border: 2px solid #333;
+      margin-top: 20px;
+    }
+    input {
+      width: 80px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎨 三原色混合器 (RGB)</h1>
+
+  <label>紅色 R：<input type="number" id="r" min="0" max="255" value="0"></label><br><br>
+  <label>綠色 G：<input type="number" id="g" min="0" max="255" value="0"></label><br><br>
+  <label>藍色 B：<input type="number" id="b" min="0" max="255" value="0"></label><br><br>
+
+  <button onclick="mixColor()">混合顏色</button>
+
+  <div class="box" id="result"></div>
+
+  <script>
+    function mixColor() {
+      const r = document.getElementById("r").value;
+      const g = document.getElementById("g").value;
+      const b = document.getElementById("b").value;
+
+      const color = `rgb(${r}, ${g}, ${b})`;
+
+      document.getElementById("result").style.background = color;
+    }
+  </script>
+</body>
+</html>
