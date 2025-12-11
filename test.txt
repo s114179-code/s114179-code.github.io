@@ -1,1 +1,16 @@
 hello world
+# 三原色混合程式
+
+# 取得使用者輸入 (0~255)
+r = int(input("請輸入紅色(R) 0~255: "))
+g = int(input("請輸入綠色(G) 0~255: "))
+b = int(input("請輸入藍色(B) 0~255: "))
+
+# 確保不會超過 0~255
+r = max(0, min(255, r))
+g = max(0, min(255, g))
+b = max(0, min(255, b))
+
+print(f"混合後的顏色 RGB = ({r}, {g}, {b})")
+hex_color = "#{:02X}{:02X}{:02X}".format(r, g, b)
+print(f"其十六進位色碼為：{hex_color}")
