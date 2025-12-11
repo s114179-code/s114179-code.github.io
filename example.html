@@ -5,215 +5,167 @@
     <title>宜蕙的網站</title>
     <link rel="icon" href="5bbe86970d244a4fbe3713c16f8c6e6c.jpeg">
  
-  <meta charset="utf-8" />
-  <title>Flappy Bird - 簡易版</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8" />
+  <title>Flappy Bird 完整版</title>
   <style>
-    :root { --bg:#70c5ce; --ground:#ded895; --pipe:#2d8a3a; --bird:#ffdd57; }
-    html,body{height:100%;margin:0;font-family:Helvetica,Arial,sans-serif;background:var(--bg);display:flex;align-items:center;justify-content:center;}
-    .wrap{width:360px; max-width:95vw; text-align:center;}
-    canvas{display:block;margin:16px auto;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.2); background:linear-gradient(#70c5ce,#6fc2ca);}
-    .hud{color:#fff;font-weight:700;text-shadow:0 1px 0 rgba(0,0,0,0.2);}
-    .hint{color:#fff;font-weight:600;margin-top:8px;}
-    .credits{font-size:12px;color:rgba(255,255,255,0.9);margin-top:6px;}
+    body { text-align: center; font-family: Arial; }
+    #gameCanvas { background: #70c5ce; display: block; margin: 0 auto; }
+    #ui { margin-top: 20px; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="hud">
-      <h2 style="margin:6px 0;">Flappy Bird — 簡易版</h2>
-    </div>
+<h1>Flappy Bird</h1>
 
-    <canvas id="game" width="360" height="600" aria-label="Flappy Bird game"></canvas>
+<!-- 玩家名稱輸入 -->
+<div id="ui">
+  玩家名稱：<input id="playerName" />
+  <br><br>
 
-    <div class="hint">按 空白鍵 / 滑鼠 / 螢幕 點擊 控制跳躍（點擊開始）</div>
-    <div class="credits">存檔為 index.html 即可在瀏覽器開啟</div>
-  </div>
+  <!-- 換角色 -->
+  選擇角色：
+  <select id="skin">
+    <option value="yellow">黃色鳥</option>
+    <option value="red">紅色鳥</option>
+    <option value="blue">藍色鳥</option>
+  </select>
+</div>
 
-  <script>
-    // 環境
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
+<canvas id="gameCanvas" width="350" height="500"></canvas>
 
-    // 遊戲變數
-    const GRAVITY = 0.9;
-    const FLAP = -12;
-    let bird, pipes, frameCount, score, state;
+<!-- 排行榜顯示 -->
+<h2>排行榜</h2>
+<ol id="leaderboard"></ol>
 
-    // state: "ready", "playing", "gameover"
-    function reset() {
-      bird = {
-        x: 80,
-        y: canvas.height/2 - 20,
-        w: 34,
-        h: 24,
-        vy: 0,
-        rotation: 0
-      };
-      pipes = [];
-      frameCount = 0;
-      score = 0;
-      state = 'ready';
+<script>
+let canvas = document.getElementById("gameCanvas");
+let ctx = canvas.getContext("2d");
+
+let bird = { x: 50, y: 250, size: 20, velocity: 0 };
+let pipes = [];
+let score = 0;
+let bestScore = Number(localStorage.getItem("bestScore")) || 0;
+let leaderboard = JSON.parse(localStorage.getItem("leaderboard")) || [];
+let gameLoop;
+let isGameOver = false;
+
+// 角色顏色
+function getBirdColor() {
+  let skin = document.getElementById("skin").value;
+  if (skin === "red") return "red";
+  if (skin === "blue") return "blue";
+  return "yellow";
+}
+
+function startGame() {
+  bird.y = 250;
+  bird.velocity = 0;
+  pipes = [];
+  score = 0;
+  isGameOver = false;
+
+  if (gameLoop) clearInterval(gameLoop);
+  gameLoop = setInterval(update, 20);
+}
+
+function update() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 重力
+  bird.velocity += 0.5;
+  bird.y += bird.velocity;
+
+  // 畫鳥
+  ctx.fillStyle = getBirdColor();
+  ctx.beginPath();
+  ctx.arc(bird.x, bird.y, bird.size, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 隨機加入水管
+  if (pipes.length === 0 || pipes[pipes.length - 1].x < 150) {
+    let gap = 120;
+    let topHeight = Math.random() * 250 + 50;
+    pipes.push({ x: 350, top: topHeight, bottom: topHeight + gap });
+  }
+
+  // 移動水管並畫出
+  for (let i = 0; i < pipes.length; i++) {
+    let p = pipes[i];
+    p.x -= 2;
+
+    ctx.fillStyle = "green";
+    ctx.fillRect(p.x, 0, 50, p.top);
+    ctx.fillRect(p.x, p.bottom, 50, 500 - p.bottom);
+
+    // 得分
+    if (p.x + 50 === bird.x) score++;
+
+    // 碰撞
+    if (
+      bird.x + bird.size > p.x &&
+      bird.x - bird.size < p.x + 50 &&
+      (bird.y - bird.size < p.top || bird.y + bird.size > p.bottom)
+    ) {
+      endGame();
     }
+  }
 
-    // 生成管子
-    function spawnPipe() {
-      const gap = 140; // 管子間隙
-      const top = 50 + Math.random() * (canvas.height - 220);
-      pipes.push({
-        x: canvas.width + 10,
-        w: 54,
-        topHeight: top,
-        bottomHeight: canvas.height - top - gap,
-        passed: false
-      });
-    }
+  // 出界
+  if (bird.y > 500 || bird.y < 0) endGame();
 
-    // 碰撞判定（矩形近似）
-    function collides(b, p) {
-      if (b.x + b.w > p.x && b.x < p.x + p.w) {
-        if (b.y < p.topHeight || b.y + b.h > canvas.height - p.bottomHeight) return true;
-      }
-      // 地面/天花板
-      if (b.y + b.h >= canvas.height || b.y <= 0) return true;
-      return false;
-    }
+  // 顯示分數
+  ctx.fillStyle = "black";
+  ctx.font = "20px Arial";
+  ctx.fillText("分數: " + score, 10, 25);
+  ctx.fillText("最高: " + bestScore, 10, 50);
+}
 
-    // 繪製
-    function draw() {
-      // 背景漸層
-      const g = ctx.createLinearGradient(0,0,0,canvas.height);
-      g.addColorStop(0, '#70c5ce');
-      g.addColorStop(1, '#6fc2ca');
-      ctx.fillStyle = g;
-      ctx.fillRect(0,0,canvas.width,canvas.height);
+function endGame() {
+  isGameOver = true;
+  clearInterval(gameLoop);
 
-      // 管子
-      ctx.fillStyle = '#2d8a3a';
-      pipes.forEach(p => {
-        // 上方
-        ctx.fillRect(p.x, 0, p.w, p.topHeight);
-        // 下方
-        ctx.fillRect(p.x, canvas.height - p.bottomHeight, p.w, p.bottomHeight);
-      });
+  // 更新最佳紀錄
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem("bestScore", bestScore);
+  }
 
-      // 地面陰影線（簡單）
-      ctx.fillStyle = 'rgba(0,0,0,0.06)';
-      ctx.fillRect(0, canvas.height - 6, canvas.width, 6);
+  // 更新排行榜
+  let name = document.getElementById("playerName").value || "玩家";
+  leaderboard.push({ name, score });
 
-      // 小鳥（矩形＋簡單旋轉）
-      ctx.save();
-      ctx.translate(bird.x + bird.w/2, bird.y + bird.h/2);
-      ctx.rotate(bird.rotation);
-      ctx.fillStyle = '#ffdd57';
-      ctx.fillRect(-bird.w/2, -bird.h/2, bird.w, bird.h);
-      // 簡單眼睛
-      ctx.fillStyle = '#333';
-      ctx.fillRect(bird.w/8, -4, 6, 6);
-      ctx.restore();
+  leaderboard.sort((a, b) => b.score - a.score);
+  leaderboard = leaderboard.slice(0, 10);
 
-      // 分數
-      ctx.fillStyle = '#fff';
-      ctx.font = '28px Arial';
-      ctx.textAlign = 'left';
-      ctx.fillText('Score: ' + score, 12, 36);
+  localStorage.setItem("leaderboard", JSON.stringify(leaderboard));
 
-      // 狀態文字
-      if (state === 'ready') {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.font = '22px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('點擊或按空白鍵開始', canvas.width/2, canvas.height/2 - 30);
-      } else if (state === 'gameover') {
-        ctx.fillStyle = 'rgba(255,0,0,0.95)';
-        ctx.font = '44px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Game Over', canvas.width/2, canvas.height/2 - 20);
+  renderLeaderboard();
+  alert("遊戲結束！分數: " + score);
+}
 
-        ctx.fillStyle = '#fff';
-        ctx.font = '20px Arial';
-        ctx.fillText('點擊或按空白鍵重新開始', canvas.width/2, canvas.height/2 + 20);
+function renderLeaderboard() {
+  let list = document.getElementById("leaderboard");
+  list.innerHTML = "";
+  leaderboard.forEach(item => {
+    let li = document.createElement("li");
+    li.textContent = item.name + " - " + item.score;
+    list.appendChild(li);
+  });
+}
 
-        ctx.font = '18px Arial';
-        ctx.fillText('最終分數: ' + score, canvas.width/2, canvas.height/2 + 56);
-      }
-    }
+// 點擊跳躍
+window.addEventListener("mousedown", () => {
+  if (!isGameOver) {
+    bird.velocity = -8;
+  } else {
+    startGame();
+  }
+});
 
-    // 更新遊戲狀態
-    function update() {
-      if (state === 'playing') {
-        // 鳥物理
-        bird.vy += GRAVITY;
-        bird.y += bird.vy;
-        bird.rotation = Math.max(-0.6, Math.min(1.2, bird.vy * 0.03));
-
-        // 產生管子
-        if (frameCount % 110 === 0) spawnPipe();
-
-        // 移動管子並檢查碰撞與加分
-        for (let i = 0; i < pipes.length; i++) {
-          const p = pipes[i];
-          p.x -= 2.6;
-
-          if (!p.passed && (p.x + p.w) < bird.x) {
-            score++;
-            p.passed = true;
-          }
-
-          if (collides(bird, p)) {
-            state = 'gameover';
-          }
-        }
-
-        // 移除離開畫面的管子
-        pipes = pipes.filter(p => p.x + p.w > -10);
-      }
-
-      frameCount++;
-    }
-
-    // 遊戲主循環
-    function loop() {
-      update();
-      draw();
-      requestAnimationFrame(loop);
-    }
-
-    // 控制輸入：跳躍 / 開始 / 重新開始
-    function flap() {
-      if (state === 'ready') {
-        state = 'playing';
-        bird.vy = FLAP;
-      } else if (state === 'playing') {
-        bird.vy = FLAP;
-      } else if (state === 'gameover') {
-        reset();
-      }
-    }
-
-    // 鍵盤 / 滑鼠 / 觸控
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        flap();
-      }
-    });
-    canvas.addEventListener('mousedown', (e) => {
-      flap();
-    });
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      flap();
-    }, {passive:false});
-
-    // 初始化並啟動
-    reset();
-    loop();
-
-    // 若你想暫時測試自動生成分數（開發用），可以取消下面註解：
-    // setInterval(()=>{ if(state==='playing') score++; }, 1000);
-
-  </script>
+renderLeaderboard();
+startGame();
+</script>
 </body>
 </html>
- 
+
+
+
