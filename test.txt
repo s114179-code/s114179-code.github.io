@@ -1,16 +1,232 @@
-hello world
-# 三原色混合程式
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>小遊戲合集</title>
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #222;
+  color: white;
+  text-align: center;
+}
+button {
+  padding: 12px 24px;
+  font-size: 18px;
+  margin: 10px;
+  cursor: pointer;
+}
+.hidden { display: none; }
 
-# 取得使用者輸入 (0~255)
-r = int(input("請輸入紅色(R) 0~255: "))
-g = int(input("請輸入綠色(G) 0~255: "))
-b = int(input("請輸入藍色(B) 0~255: "))
+/* Flappy Bird */
+#flappyCanvas {
+  background: skyblue;
+  display: block;
+  margin: 0 auto;
+}
 
-# 確保不會超過 0~255
-r = max(0, min(255, r))
-g = max(0, min(255, g))
-b = max(0, min(255, b))
+/* Minesweeper */
+#mineBoard {
+  display: grid;
+  grid-template-columns: repeat(8, 40px);
+  gap: 2px;
+  justify-content: center;
+}
+.cell {
+  width: 40px;
+  height: 40px;
+  background: #888;
+  line-height: 40px;
+  cursor: pointer;
+  user-select: none;
+}
+.cell.revealed {
+  background: #ccc;
+  color: black;
+}
+.cell.mine {
+  background: red;
+}
+</style>
+</head>
 
-print(f"混合後的顏色 RGB = ({r}, {g}, {b})")
-hex_color = "#{:02X}{:02X}{:02X}".format(r, g, b)
-print(f"其十六進位色碼為：{hex_color}")
+<body>
+
+<!-- 主選單 -->
+<div id="menu">
+  <h1>🎮 小遊戲合集</h1>
+  <button onclick="startFlappy()">🐦 Flappy Bird</button>
+  <button onclick="startMine()">💣 踩地雷</button>
+</div>
+
+<!-- Flappy Bird -->
+<div id="flappy" class="hidden">
+  <h2>Flappy Bird</h2>
+  <canvas id="flappyCanvas" width="400" height="500"></canvas>
+  <p>分數：<span id="score">0</span>｜最高紀錄：<span id="best">0</span></p>
+  <button onclick="backMenu()">返回選單</button>
+</div>
+
+<!-- 踩地雷 -->
+<div id="mine" class="hidden">
+  <h2>踩地雷</h2>
+  <div id="mineBoard"></div>
+  <p id="mineStatus"></p>
+  <button onclick="backMenu()">返回選單</button>
+</div>
+
+<script>
+/* ---------- 畫面切換 ---------- */
+const menu = document.getElementById("menu");
+const flappyDiv = document.getElementById("flappy");
+const mineDiv = document.getElementById("mine");
+
+function backMenu() {
+  flappyDiv.classList.add("hidden");
+  mineDiv.classList.add("hidden");
+  menu.classList.remove("hidden");
+}
+
+/* ---------- Flappy Bird ---------- */
+const canvas = document.getElementById("flappyCanvas");
+const ctx = canvas.getContext("2d");
+
+let birdY, birdV, pipes, score, best, gameOver;
+
+best = localStorage.getItem("flappyBest") || 0;
+document.getElementById("best").textContent = best;
+
+function startFlappy() {
+  menu.classList.add("hidden");
+  flappyDiv.classList.remove("hidden");
+
+  birdY = 250;
+  birdV = 0;
+  pipes = [];
+  score = 0;
+  gameOver = false;
+  document.getElementById("score").textContent = score;
+
+  pipes.push({ x: 400, gapY: 200 });
+  requestAnimationFrame(flappyLoop);
+}
+
+function flappyLoop() {
+  if (gameOver) return;
+
+  ctx.clearRect(0,0,400,500);
+
+  // bird
+  birdV += 0.5;
+  birdY += birdV;
+  ctx.fillStyle = "yellow";
+  ctx.fillRect(80, birdY, 20, 20);
+
+  // pipes
+  for (let p of pipes) {
+    p.x -= 2;
+    ctx.fillStyle = "green";
+    ctx.fillRect(p.x, 0, 40, p.gapY - 80);
+    ctx.fillRect(p.x, p.gapY + 80, 40, 500);
+
+    // collision
+    if (80 < p.x + 40 && 100 > p.x &&
+       (birdY < p.gapY - 80 || birdY + 20 > p.gapY + 80)) {
+      endFlappy();
+    }
+
+    if (p.x === 80) {
+      score++;
+      document.getElementById("score").textContent = score;
+    }
+  }
+
+  if (pipes[0].x < -40) {
+    pipes.shift();
+    pipes.push({ x: 400, gapY: Math.random() * 200 + 150 });
+  }
+
+  if (birdY > 480 || birdY < 0) endFlappy();
+
+  requestAnimationFrame(flappyLoop);
+}
+
+function endFlappy() {
+  gameOver = true;
+  if (score > best) {
+    best = score;
+    localStorage.setItem("flappyBest", best);
+    document.getElementById("best").textContent = best;
+  }
+  alert("遊戲結束！");
+}
+
+document.addEventListener("keydown", e => {
+  if (!flappyDiv.classList.contains("hidden") && e.code === "Space") {
+    birdV = -8;
+  }
+});
+canvas.addEventListener("click", () => birdV = -8);
+
+/* ---------- 踩地雷 ---------- */
+const mineBoard = document.getElementById("mineBoard");
+const mineStatus = document.getElementById("mineStatus");
+let mines = [];
+let revealed = [];
+
+function startMine() {
+  menu.classList.add("hidden");
+  mineDiv.classList.remove("hidden");
+  mineBoard.innerHTML = "";
+  mineStatus.textContent = "";
+  mines = Array(64).fill(false);
+  revealed = Array(64).fill(false);
+
+  // 放 10 顆地雷
+  let count = 0;
+  while (count < 10) {
+    let r = Math.floor(Math.random() * 64);
+    if (!mines[r]) {
+      mines[r] = true;
+      count++;
+    }
+  }
+
+  for (let i = 0; i < 64; i++) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.onclick = () => clickCell(i, cell);
+    mineBoard.appendChild(cell);
+  }
+}
+
+function clickCell(i, cell) {
+  if (revealed[i]) return;
+  revealed[i] = true;
+
+  if (mines[i]) {
+    cell.classList.add("mine");
+    mineStatus.textContent = "💥 踩到地雷，遊戲結束！";
+    return;
+  }
+
+  let around = 0;
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      let x = (i % 8) + dx;
+      let y = Math.floor(i / 8) + dy;
+      let idx = y * 8 + x;
+      if (x >= 0 && x < 8 && y >= 0 && y < 8 && mines[idx]) {
+        around++;
+      }
+    }
+  }
+
+  cell.classList.add("revealed");
+  cell.textContent = around === 0 ? "" : around;
+}
+</script>
+
+</body>
+</html>
